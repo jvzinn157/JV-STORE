@@ -1,0 +1,336 @@
+--[[
+    Aimbot + ESP (Box + Tracer + Distância)
+    Créditos: JV STORE | ig: jaovt.x7
+]]
+local fov = 50
+local maxTransparency = 0.1
+
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Cam = game.Workspace.CurrentCamera
+local Workspace = game.Workspace
+
+local localPlayer = Players.LocalPlayer
+local localChar = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+
+-- ─── SISTEMA DE CRÉDITOS (estilo RAYFIELD) ──────────────────────────────
+local creditosAtivos = true
+local creditosTempo = 0
+local creditosFase = 1
+
+local loadingText = Drawing.new("Text")
+loadingText.Visible = true
+loadingText.Text = "CARREGANDO"
+loadingText.Size = 34
+loadingText.Center = true
+loadingText.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2 - 40)
+loadingText.Color = Color3.fromRGB(255, 255, 255)
+loadingText.Transparency = 1
+loadingText.Font = 2
+
+local subText = Drawing.new("Text")
+subText.Visible = true
+subText.Text = "."
+subText.Size = 20
+subText.Center = true
+subText.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2 + 10)
+subText.Color = Color3.fromRGB(200, 200, 200)
+subText.Transparency = 1
+subText.Font = 2
+
+local creditosText = Drawing.new("Text")
+creditosText.Visible = true
+creditosText.Text = "🐍 SCRIPT POR JV STORE"
+creditosText.Size = 32
+creditosText.Center = true
+creditosText.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2 - 20)
+creditosText.Color = Color3.fromRGB(255, 255, 255)
+creditosText.Transparency = 1
+creditosText.Font = 2
+
+local creditosSub = Drawing.new("Text")
+creditosSub.Visible = true
+creditosSub.Text = "ig: jaovt.x7"
+creditosSub.Size = 18
+creditosSub.Center = true
+creditosSub.Position = Vector2.new(Cam.ViewportSize.X / 2, Cam.ViewportSize.Y / 2 + 25)
+creditosSub.Color = Color3.fromRGB(200, 200, 200)
+creditosSub.Transparency = 1
+creditosSub.Font = 2
+
+local pontos = 0
+
+local function updateCreditosPosition()
+    local vSize = Cam.ViewportSize
+    loadingText.Position = Vector2.new(vSize.X / 2, vSize.Y / 2 - 40)
+    subText.Position = Vector2.new(vSize.X / 2, vSize.Y / 2 + 10)
+    creditosText.Position = Vector2.new(vSize.X / 2, vSize.Y / 2 - 20)
+    creditosSub.Position = Vector2.new(vSize.X / 2, vSize.Y / 2 + 25)
+end
+updateCreditosPosition()
+
+RunService.RenderStepped:Connect(function()
+    if not creditosAtivos then return end
+    creditosTempo = creditosTempo + 0.016
+
+    if creditosFase == 1 then
+        local alpha = math.min(creditosTempo / 1.0, 1)
+        loadingText.Transparency = 1 - alpha
+        subText.Transparency = 1 - alpha
+
+        pontos = pontos + 1
+        if pontos > 3 then pontos = 0 end
+        local pontoStr = ""
+        for i = 1, pontos do pontoStr = pontoStr .. "." end
+        subText.Text = pontoStr
+
+        if creditosTempo > 2.0 then
+            creditosFase = 2
+            creditosTempo = 0
+            loadingText.Visible = false
+            subText.Visible = false
+        end
+
+    elseif creditosFase == 2 then
+        local alpha = math.min(creditosTempo / 0.8, 1)
+        creditosText.Transparency = 1 - alpha
+        creditosSub.Transparency = 1 - alpha
+
+        if creditosTempo > 4.0 then
+            creditosFase = 3
+            creditosTempo = 0
+        end
+
+    elseif creditosFase == 3 then
+        local alpha = math.min(creditosTempo / 0.8, 1)
+        creditosText.Transparency = alpha
+        creditosSub.Transparency = alpha
+
+        if creditosTempo > 1.0 then
+            creditosAtivos = false
+            creditosText.Visible = false
+            creditosSub.Visible = false
+            loadingText.Visible = false
+            subText.Visible = false
+            iniciarScript()
+        end
+    end
+end)
+
+-- ─── SCRIPT PRINCIPAL ──────────────────────────────────────────────────
+local scriptIniciado = false
+
+function iniciarScript()
+    if scriptIniciado then return end
+    scriptIniciado = true
+
+    local FOVring = Drawing.new("Circle")
+    FOVring.Visible = true
+    FOVring.Thickness = 2
+    FOVring.Color = Color3.fromRGB(128, 0, 128)
+    FOVring.Filled = false
+    FOVring.Radius = fov
+    FOVring.Position = Cam.ViewportSize / 2
+
+    local function updateDrawings()
+        FOVring.Position = Cam.ViewportSize / 2
+    end
+
+    local function isPlayerVisible(player)
+        local char = player.Character
+        if not char then return false end
+        local head = char:FindFirstChild("Head")
+        if not head then return false end
+
+        local cameraPos = Cam.CFrame.Position
+        local targetPos = head.Position
+
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        params.FilterDescendantsInstances = { localChar, char }
+
+        local result = Workspace:Raycast(cameraPos, (targetPos - cameraPos), params)
+        return result == nil
+    end
+
+    local function lookAt(target)
+        local lookVector = (target - Cam.CFrame.Position).unit
+        local newCFrame = CFrame.new(Cam.CFrame.Position, Cam.CFrame.Position + lookVector)
+        Cam.CFrame = newCFrame
+    end
+
+    local function getClosestPlayerInFOV(trg_part)
+        local nearest = nil
+        local last = math.huge
+        local mousePos = Cam.ViewportSize / 2
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer then
+                local part = player.Character and player.Character:FindFirstChild(trg_part)
+                if part then
+                    local ePos, isOnScreen = Cam:WorldToViewportPoint(part.Position)
+                    local distance = (Vector2.new(ePos.x, ePos.y) - mousePos).Magnitude
+                    if isOnScreen and distance < fov and distance < last and isPlayerVisible(player) then
+                        last = distance
+                        nearest = player
+                    end
+                end
+            end
+        end
+        return nearest
+    end
+
+    -- ─── ESP ──────────────────────────────────────────────────────────────────
+    local espObjects = {}
+
+    local function createESP(player)
+        if espObjects[player] then return end
+        local data = {
+            box = Drawing.new("Square"),
+            tracer = Drawing.new("Line"),
+            distanceText = Drawing.new("Text")
+        }
+        data.box.Visible = false
+        data.box.Thickness = 1.5
+        data.box.Color = Color3.fromRGB(0, 255, 0)
+        data.box.Transparency = 0.3
+        data.box.Filled = false
+
+        data.tracer.Visible = false
+        data.tracer.Thickness = 1
+        data.tracer.Color = Color3.fromRGB(255, 255, 255)
+        data.tracer.Transparency = 0.3
+
+        data.distanceText.Visible = false
+        data.distanceText.Size = 14
+        data.distanceText.Center = true
+        data.distanceText.Color = Color3.fromRGB(255, 255, 255)
+        data.distanceText.Transparency = 0
+        data.distanceText.Font = 0
+
+        espObjects[player] = data
+    end
+
+    local function removeESP(player)
+        local data = espObjects[player]
+        if data then
+            data.box:Remove()
+            data.tracer:Remove()
+            data.distanceText:Remove()
+            espObjects[player] = nil
+        end
+    end
+
+    local function updateESP()
+        local viewport = Cam.ViewportSize
+        local bottomCenter = Vector2.new(viewport.X / 2, viewport.Y)
+
+        for player, data in pairs(espObjects) do
+            local char = player.Character
+            if not char or not player.Parent then
+                removeESP(player)
+                continue
+            end
+
+            local head = char:FindFirstChild("Head")
+            local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+            if head and torso then
+                local headPos, headVis = Cam:WorldToViewportPoint(head.Position)
+                local torsoPos = Cam:WorldToViewportPoint(torso.Position)
+
+                if headVis then
+                    local distance = math.floor((Cam.CFrame.Position - head.Position).Magnitude)
+                    local height = (headPos.Y - torsoPos.Y) * 3.5
+                    local width = height * 0.5
+                    local centerX = headPos.X
+                    local centerY = (headPos.Y + torsoPos.Y) / 2
+
+                    data.box.Visible = true
+                    data.box.Size = Vector2.new(width, height)
+                    data.box.Position = Vector2.new(centerX - width/2, centerY - height/2)
+
+                    data.tracer.Visible = true
+                    data.tracer.From = bottomCenter
+                    data.tracer.To = Vector2.new(headPos.X, headPos.Y)
+
+                    data.distanceText.Visible = true
+                    data.distanceText.Text = tostring(distance) .. "m"
+                    data.distanceText.Position = Vector2.new(headPos.X, headPos.Y + height/2 + 20)
+                else
+                    data.box.Visible = false
+                    data.tracer.Visible = false
+                    data.distanceText.Visible = false
+                end
+            else
+                data.box.Visible = false
+                data.tracer.Visible = false
+                data.distanceText.Visible = false
+            end
+        end
+    end
+
+    -- ─── GERENCIAR JOGADORES ──────────────────────────────────────────────
+    local function setupPlayer(player)
+        if player == localPlayer then return end
+        if player.Character then createESP(player) end
+        player.CharacterAdded:Connect(function() createESP(player) end)
+    end
+
+    for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
+    Players.PlayerAdded:Connect(setupPlayer)
+    Players.PlayerRemoving:Connect(removeESP)
+    localPlayer.CharacterAdded:Connect(function(char) localChar = char end)
+
+    -- ─── TECLA DELETE ──────────────────────────────────────────────────────
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.Delete then
+            FOVring:Remove()
+            for player, data in pairs(espObjects) do removeESP(player) end
+            espObjects = {}
+            loadingText.Visible = false
+            subText.Visible = false
+            creditosText.Visible = false
+            creditosSub.Visible = false
+            creditosAtivos = false
+        end
+    end)
+
+    -- ─── LOOP PRINCIPAL ──────────────────────────────────────────────────
+    RunService.RenderStepped:Connect(function()
+        updateDrawings()
+
+        local closest = getClosestPlayerInFOV("Head")
+        if closest and closest.Character and closest.Character:FindFirstChild("Head") then
+            if isPlayerVisible(closest) then
+                lookAt(closest.Character.Head.Position)
+            end
+        end
+
+        if closest and closest.Character and closest.Character:FindFirstChild("Head") then
+            local ePos, isVis = Cam:WorldToViewportPoint(closest.Character.Head.Position)
+            if isVis then
+                local dist = (Vector2.new(ePos.x, ePos.y) - Cam.ViewportSize / 2).Magnitude
+                FOVring.Transparency = (1 - (dist / fov)) * maxTransparency
+            else
+                FOVring.Transparency = 0.1
+            end
+        else
+            FOVring.Transparency = 0.1
+        end
+
+        updateESP()
+    end)
+end
+
+-- Se apertar Delete durante os créditos, inicia o script imediatamente
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Delete and not scriptIniciado then
+        creditosAtivos = false
+        loadingText.Visible = false
+        subText.Visible = false
+        creditosText.Visible = false
+        creditosSub.Visible = false
+        iniciarScript()
+    end
+end)
